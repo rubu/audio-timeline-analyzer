@@ -8,6 +8,7 @@ verify_ssl = true
 [packages]
 pandas = "*"
 xlsxwriter = "*"
+numpy = "==1.19.3"
 
 [requires]
-python_version = "3.7"
+python_version = "python 3"
