@@ -19,7 +19,11 @@ class TimelineElement:
 class TimelineStep:
     def __init__(self, current, previous, samplerate, clock_resolution):
         self.time_window = current.host_timestamp - previous.host_timestamp
-        self.samples = previous.number_of_samples
+        self.samples = current.position - previous.position
+        self.note = ""
+        if self.samples != previous.number_of_samples:
+            print(f"error: stream position increment {self.samples} at position {previous.position} does not match reported number of samples {previous.number_of_samples}", file=sys.stderr)
+            self.note = f"invalid position increment ({self.samples} vs {previous.number_of_samples})"
         self.timestamp = previous.host_timestamp
         self.nominal_samplerate = int(samplerate)
         self.actual_samplerate = self.samples * 1.0 / (self.time_window / clock_resolution)
@@ -40,10 +44,19 @@ def series_from_timeline(iterator, nominal_input_samplerate, clock_resolution):
 def split_timeline(timeline):
     time = []
     samplerate = []
+    time_delta = []
+    note = []
+    previous_timestamp = 0
     for entry in timeline:
         time.append(entry.timestamp)
+        note.append(entry.note)
+        if previous_timestamp == 0:
+            time_delta.append(0)
+        else:
+            time_delta.append(entry.timestamp - previous_timestamp)
+        previous_timestamp = entry.timestamp
         samplerate.append(entry.actual_samplerate)
-    return time,samplerate
+    return time, samplerate, time_delta, note
 
 def main():
     try:
@@ -93,8 +106,8 @@ def main():
             # Iterate through both lists and try to align based on host timestamp
             input_series = series_from_timeline(input_timeline, nominal_input_samplerate, clock_resolution)
             output_series = series_from_timeline(output_timeline, nominal_output_samplerate, clock_resolution)
-            input_time, input_rate = split_timeline(input_series)
-            output_time, output_rate = split_timeline(output_series)
+            input_time, input_rate, input_time_delta, input_note = split_timeline(input_series)
+            output_time, output_rate, output_time_delta, output_note = split_timeline(output_series)
 
             first_input_time = input_time[0]
             last_output_time = output_time[len(output_time) - 1]
@@ -104,6 +117,7 @@ def main():
                 output_rate.pop(0)
 
             frames = []
+            columns = 4
             # Write input/output to an excel file
             time_offset = output_time[0] - input_time[0]
             input_range =  time_offset + input_time[-1] - input_time[0]
@@ -111,11 +125,11 @@ def main():
             max_range = max(input_range, output_range)
             max_range = max_range / (clock_resolution / 1000)
             frames.append({"name": "input",
-                "data": pd.DataFrame({"Input Timestamp": input_time, "Input Nominal Sample Rate": input_rate}),
+                "data": pd.DataFrame({"Input Timestamp": input_time, "Input Timestamp Delta": input_time_delta, "Input Nominal Sample Rate": input_rate, "Note": input_note}),
                 "length": len(input_time)
             })
             frames.append({"name": "output",
-                "data": pd.DataFrame({"Output Timestamp": output_time, "Output Nominal Sample Rate": output_rate}),
+                "data": pd.DataFrame({"Output Timestamp": output_time, "Output Timestamp Delta": output_time_delta, "Output Nominal Sample Rate": output_rate, "Note": output_note}),
                 "length": len(output_time)
             })
             writer = ExcelWriter("timeline.xlsx", engine="xlsxwriter")
@@ -125,16 +139,16 @@ def main():
             graph_sheet = writer.book.add_worksheet("Sample Rate Drift")
             writer.sheets["Sample Rate Drift"] = graph_sheet
             sample_rate_drift_chart = writer.book.add_chart({"type": "scatter", "subtype": "straight_with_markers"})
-            sample_rate_drift_chart.set_x_axis({"name": "Time"})
+            sample_rate_drift_chart.set_x_axis({"name": "Time", "min": first_input_time})
             sample_rate_drift_chart.set_y_axis({"name": "Nominal Sample Rate"})
             for frame in frames:
                 frame_data = frame["data"]
-                frame_data.to_excel(writer, "Timeline", index=False, startcol=series * 2)
+                frame_data.to_excel(writer, "Timeline", index=False, startcol=series * columns, float_format = "%0.2f")
                 end_row = frame["length"] + 1
                 sample_rate_drift_chart.add_series({
                     "name": frame["name"],
-                    "categories": ["Timeline", 1, series * 2, end_row, series * 2],
-                    "values" : ["Timeline", 1, series * 2 + 1, end_row, series * 2 + 1]
+                    "categories": ["Timeline", 1, series * columns, end_row, series * columns],
+                    "values" : ["Timeline", 1, series * columns + 2, end_row, series * columns + 2]
                 })
                 series += 1
 
