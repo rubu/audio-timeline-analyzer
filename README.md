@@ -1,3 +1,7 @@
+# Description #
+
+This is a python script for analyzing input / output timeline csv files from Sonarworks Reference 4, to understand clock drift issues and causes for audio clicks and pops.
+ 
 # Setup #
 
 After cloning the repo run `pipenv install` to install the needed python packages.
