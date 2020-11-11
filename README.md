@@ -1,6 +1,6 @@
 # Setup #
 
-After cloning the repo run `pipenv install` to install the needed python packages
+After cloning the repo run `pipenv install` to install the needed python packages.
 
 # Usage #
 
