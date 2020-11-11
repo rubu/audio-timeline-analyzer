@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${workspaceRoot}/audio-timeline-analyzer.py",
             "console": "integratedTerminal",
-            "args": ["-i", "/Users/rudolfs/Downloads/InputTimeline-1581612587.csv"]
+            "args": ["-i", "./samples/just spotify 44109/InputTimeline-1605095046.csv"]
         }
     ]
 }
