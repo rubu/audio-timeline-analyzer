@@ -26,7 +26,15 @@ class TimelineStep:
             self.note = f"invalid position increment ({self.samples} vs {previous.number_of_samples})"
         self.timestamp = previous.host_timestamp
         self.nominal_samplerate = int(samplerate)
-        self.actual_samplerate = self.samples * 1.0 / (self.time_window / clock_resolution)
+        if self.time_window > 0:
+            self.actual_samplerate = self.samples * 1.0 / (self.time_window / clock_resolution)
+        else:
+            self.actual_samplerate = 0
+            note = f"invalid time increment {self.time_window} at timestamp {self.timestamp}"
+            print(f"error: {note}", file=sys.stderr)
+            if len(self.note):
+                self.note = self.note + "\n"
+            self.note = self.note + note
 
 def series_from_timeline(iterator, nominal_input_samplerate, clock_resolution):
     previous = TimelineElement(next(iterator))
@@ -62,7 +70,7 @@ def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:], "i:o:r:", [])
     except getopt.GetoptError as err:
-        print("{0}", str(err))
+        print(str(err))
         sys.exit(1)
     input_file_path = ""
     output_file_path = ""
@@ -80,19 +88,19 @@ def main():
     if (not (input_file_path and output_file_path)):
         if (input_file_path):
             if (path.isfile(input_file_path) == False):
-                print("{0} does not exist", input_file_path)
+                print(f"{input_file_path} does not exist")
                 sys.exit(1)
             output_file_path = input_file_path.replace("InputTimeline", "OutputTimeline")
         elif (output_file_path):
             if (path.isfile(output_file_path) == False):
-                print("{0} does not exist", output_file_path)
+                print(f"{output_file_path} does not exist")
                 sys.exit(1)
             input_file_path = output_file_path.replace("InputTimeline", "OutputTimeline")
     if (path.isfile(input_file_path) == False):
-        print("{0} does not exist", input_file_path)
+        print(f"{input_file_path} does not exist")
         sys.exit(1)
     if (path.isfile(output_file_path) == False):
-        print("{0} does not exist", output_file_path)
+        print(f"{output_file_path} does not exist")
         sys.exit(1)
     with open(input_file_path, newline='') as input_file:
         with open(output_file_path, newline='') as output_file:
@@ -109,21 +117,12 @@ def main():
             input_time, input_rate, input_time_delta, input_note = split_timeline(input_series)
             output_time, output_rate, output_time_delta, output_note = split_timeline(output_series)
 
-            first_input_time = input_time[0]
-            last_output_time = output_time[len(output_time) - 1]
-            # Strip evertyhing from output up to first input since that will not corelate with the input
-            while (len(output_time) and output_time[0] < first_input_time):
-                output_time.pop(0)
-                output_rate.pop(0)
-
+            first_time = min(input_time[0], output_time[0])
+            last_time = max(input_time[-1], output_time[-1])
             frames = []
             columns = 4
             # Write input/output to an excel file
-            time_offset = output_time[0] - input_time[0]
-            input_range =  time_offset + input_time[-1] - input_time[0]
-            output_range = output_time[-1] - output_time[0]
-            max_range = max(input_range, output_range)
-            max_range = max_range / (clock_resolution / 1000)
+            max_range = (last_time - first_time) / (clock_resolution / 1000)
             frames.append({"name": "input",
                 "data": pd.DataFrame({"Input Timestamp": input_time, "Input Timestamp Delta": input_time_delta, "Input Nominal Sample Rate": input_rate, "Note": input_note}),
                 "length": len(input_time)
@@ -139,7 +138,7 @@ def main():
             graph_sheet = writer.book.add_worksheet("Sample Rate Drift")
             writer.sheets["Sample Rate Drift"] = graph_sheet
             sample_rate_drift_chart = writer.book.add_chart({"type": "scatter", "subtype": "straight_with_markers"})
-            sample_rate_drift_chart.set_x_axis({"name": "Time", "min": first_input_time})
+            sample_rate_drift_chart.set_x_axis({"name": "Time", "min": first_time, "max": last_time})
             sample_rate_drift_chart.set_y_axis({"name": "Nominal Sample Rate"})
             for frame in frames:
                 frame_data = frame["data"]
